@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تطبيق مصروفات المنزل</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <style>
+    body { background-color: #f8f9fa; font-family: 'Segoe UI', sans-serif; }
+    .form-section, .result-section, .names-section {
+      background: white; padding: 20px; border-radius: 15px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1); margin-bottom: 20px;
+    }
+    .icon-btn { display: flex; align-items: center; gap: 5px; }
+  </style>
+</head>
+<body class="container py-4">
+
+  <h2 class="mb-4 text-center text-primary">تطبيق مصروفات المنزل</h2>
+
+  <div class="names-section">
+    <h5>إضافة الأشخاص</h5>
+    <div class="input-group mb-3">
+      <input type="text" id="new-person" class="form-control" placeholder="أدخل اسم الشخص">
+      <button class="btn btn-secondary" onclick="addPerson()">إضافة</button>
+    </div>
+    <ul id="people-list" class="list-group mb-3"></ul>
+  </div>
+
+  <div class="form-section">
+    <div class="mb-3">
+      <label class="form-label">اسم المصروف</label>
+      <input type="text" class="form-control" id="expense-name">
+    </div>
+    <div class="mb-3">
+      <label class="form-label">المبلغ</label>
+      <input type="number" class="form-control" id="amount">
+    </div>
+    <div class="mb-3">
+      <label class="form-label">الشخص الذي دفع</label>
+      <select class="form-select" id="payer"></select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">المستفيدون</label><br>
+      <div id="beneficiaries-container" class="d-flex flex-wrap gap-3"></div>
+    </div>
+    <button onclick="addExpense()" class="btn btn-success icon-btn"><i class="bi bi-plus-circle"></i> إضافة</button>
+    <div id="alert-success" class="alert alert-success mt-3 d-none">تم الحفظ بنجاح!</div>
+  </div>
+
+  <div class="result-section">
+    <h5>سجل المصروفات</h5>
+    <table class="table table-bordered text-center">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>تاريخ</th>
+          <th>المصروف</th>
+          <th>المبلغ</th>
+          <th>الذي دفع</th>
+          <th>المستفيدون</th>
+          <th>تعديل</th>
+          <th>حذف</th>
+        </tr>
+      </thead>
+      <tbody id="expense-table"></tbody>
+    </table>
+    <button onclick="calculateDebts()" class="btn btn-primary icon-btn"><i class="bi bi-calculator"></i> حساب</button>
+    <button onclick="resetAll()" class="btn btn-danger icon-btn ms-2"><i class="bi bi-trash"></i> تصفير الحساب</button>
+    <div id="alert-reset" class="alert alert-info mt-3 d-none">تم تصفير الحساب بنجاح!</div>
+    <div id="results" class="mt-4"></div>
+  </div>
+
+  <script>
+    let people = [];
+    let expenses = [];
+    let editIndex = -1;
+
+    function addPerson() {
+      const nameInput = document.getElementById('new-person');
+      const name = nameInput.value.trim();
+      if (!name || people.includes(name)) return;
+      people.push(name);
+      nameInput.value = '';
+      renderPeople();
+      updatePersonSelect();
+    }
+
+    function renderPeople() {
+      const list = document.getElementById('people-list');
+      list.innerHTML = '';
+      people.forEach((person, index) => {
+        const li = document.createElement('li');
+        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+        li.innerHTML = `
+          <span>${person}</span>
+          <div>
+            <button class="btn btn-sm btn-warning me-2" onclick="editPerson(${index})"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-danger" onclick="deletePerson(${index})"><i class="bi bi-x"></i></button>
+          </div>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    function editPerson(index) {
+      const newName = prompt('تعديل الاسم:', people[index]);
+      if (newName && !people.includes(newName)) {
+        people[index] = newName;
+        renderPeople();
+        updatePersonSelect();
+      }
+    }
+
+    function deletePerson(index) {
+      people.splice(index, 1);
+      renderPeople();
+      updatePersonSelect();
+    }
+
+    function updatePersonSelect() {
+      const payerSelect = document.getElementById('payer');
+      const beneficiariesDiv = document.getElementById('beneficiaries-container');
+      payerSelect.innerHTML = '';
+      beneficiariesDiv.innerHTML = '';
+      people.forEach(person => {
+        const option = document.createElement('option');
+        option.textContent = person;
+        payerSelect.appendChild(option);
+        const checkbox = document.createElement('div');
+        checkbox.className = 'form-check';
+        checkbox.innerHTML = `
+          <input class="form-check-input" type="checkbox" value="${person}" id="beneficiary-${person}">
+          <label class="form-check-label" for="beneficiary-${person}">${person}</label>
+        `;
+        beneficiariesDiv.appendChild(checkbox);
+      });
+    }
+
+    function addExpense() {
+      const name = document.getElementById('expense-name').value;
+      const amount = parseFloat(document.getElementById('amount').value);
+      const payer = document.getElementById('payer').value;
+      const checkboxes = document.querySelectorAll('#beneficiaries-container input[type="checkbox"]:checked');
+      const beneficiaries = Array.from(checkboxes).map(cb => cb.value);
+      const date = new Date().toLocaleDateString();
+
+      if (!name || !amount || beneficiaries.length === 0) return alert('يرجى تعبئة جميع الحقول');
+
+      const expense = { name, amount, payer, beneficiaries, date };
+      if (editIndex === -1) expenses.push(expense);
+      else { expenses[editIndex] = expense; editIndex = -1; }
+
+      document.getElementById('alert-success').classList.remove('d-none');
+      setTimeout(() => document.getElementById('alert-success').classList.add('d-none'), 2000);
+
+      resetForm();
+      updateTable();
+    }
+
+    function resetForm() {
+      document.getElementById('expense-name').value = '';
+      document.getElementById('amount').value = '';
+      document.getElementById('payer').selectedIndex = 0;
+      document.querySelectorAll('#beneficiaries-container input[type="checkbox"]').forEach(cb => cb.checked = false);
+    }
+
+    function updateTable() {
+      const table = document.getElementById('expense-table');
+      table.innerHTML = '';
+      expenses.forEach((e, i) => {
+        table.innerHTML += `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${e.date}</td>
+            <td>${e.name}</td>
+            <td>${e.amount}</td>
+            <td>${e.payer}</td>
+            <td>${e.beneficiaries.join(', ')}</td>
+            <td><button class="btn btn-warning btn-sm" onclick="editExpense(${i})"><i class="bi bi-pencil-square"></i></button></td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteExpense(${i})"><i class="bi bi-x-circle"></i></button></td>
+          </tr>`;
+      });
+    }
+
+    function editExpense(index) {
+      const e = expenses[index];
+      document.getElementById('expense-name').value = e.name;
+      document.getElementById('amount').value = e.amount;
+      document.getElementById('payer').value = e.payer;
+      document.querySelectorAll('#beneficiaries-container input[type="checkbox"]').forEach(cb => {
+        cb.checked = e.beneficiaries.includes(cb.value);
+      });
+      editIndex = index;
+    }
+
+    function deleteExpense(index) {
+      expenses.splice(index, 1);
+      updateTable();
+    }
+
+    function resetAll() {
+      if (confirm('هل أنت متأكد من تصفير الحساب؟ سيتم حذف جميع البيانات بما فيها الأشخاص.')) {
+        people = [];
+        expenses = [];
+        editIndex = -1;
+        renderPeople();
+        updatePersonSelect();
+        updateTable();
+        document.getElementById('results').innerHTML = '';
+        const alert = document.getElementById('alert-reset');
+        alert.classList.remove('d-none');
+        setTimeout(() => alert.classList.add('d-none'), 2000);
+      }
+    }
+
+    function calculateDebts() {
+      const balance = Object.fromEntries(people.map(p => [p, 0]));
+      let payments = Object.fromEntries(people.map(p => [p, 0]));
+      let consumptions = Object.fromEntries(people.map(p => [p, 0]));
+
+      expenses.forEach(e => {
+        const share = e.amount / e.beneficiaries.length;
+        e.beneficiaries.forEach(b => {
+          consumptions[b] += share;
+          balance[b] -= share;
+        });
+        payments[e.payer] += e.amount;
+        balance[e.payer] += e.amount;
+      });
+
+      let result = '<h5>الديون والمستحقات:</h5><ul class="list-group">';
+      const sortedPeople = [...people].sort((a, b) => balance[a] - balance[b]);
+      let i = 0, j = sortedPeople.length - 1;
+      while (i < j) {
+        const debtor = sortedPeople[i];
+        const creditor = sortedPeople[j];
+        const debtAmount = Math.min(-balance[debtor], balance[creditor]);
+        if (debtAmount > 0) {
+          result += `<li class="list-group-item">على ${debtor} أن يدفع لـ ${creditor} مبلغ ${Math.round(debtAmount)} ل.س</li>`;
+          balance[debtor] += debtAmount;
+          balance[creditor] -= debtAmount;
+        }
+        if (Math.abs(balance[debtor]) < 1) i++;
+        if (Math.abs(balance[creditor]) < 1) j--;
+      }
+      result += '</ul>';
+      result += '<h5 class="mt-4">تفاصيل المدفوعات والمستهلكات:</h5>';
+      result += '<table class="table table-bordered text-center"><thead><tr><th>الاسم</th><th>المدفوعات</th><th>المستهلكات</th></tr></thead><tbody>';
+      people.forEach(p => {
+        result += `<tr><td>${p}</td><td>${payments[p]}</td><td>${consumptions[p].toFixed(2)}</td></tr>`;
+      });
+      result += '</tbody></table>';
+      document.getElementById('results').innerHTML = result;
+    }
+  </script>
+</body>
+</html>
